@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartOPD — Live Queue</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { font-size: 24px; }
+  .token { font-size: 64px; font-weight: 700; color: var(--blue); text-align: center; }
+  .upcoming { font-size: 22px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header><h1>Live OPD Queue</h1></header>
+<main>
+  <div class="card">
+    <select id="department-select" onchange="refresh()" style="font-size:20px;"></select>
+  </div>
+  <div class="card">
+    <p class="label" style="text-align:center">Currently Serving</p>
+    <div class="token" id="serving">—</div>
+  </div>
+  <div class="card">
+    <p class="label" style="text-align:center">Upcoming Tokens</p>
+    <p class="upcoming" id="upcoming">—</p>
+  </div>
+</main>
+<script src="common.js"></script>
+<script>
+async function init() {
+  const depts = await apiFetch("/patients/departments");
+  document.getElementById("department-select").innerHTML = depts.map(d => `<option value="${d.id}">${d.name}</option>`).join("");
+  refresh();
+  setInterval(refresh, 10000);
+}
+async function refresh() {
+  const id = document.getElementById("department-select").value;
+  if (!id) return;
+  const data = await apiFetch(`/patients/queue/${id}/live`);
+  document.getElementById("serving").textContent = data.currently_serving || "—";
+  document.getElementById("upcoming").textContent = data.upcoming_tokens.join("   ") || "None waiting";
+}
+init();
+</script>
+</body>
+</html>
