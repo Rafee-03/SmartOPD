@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartOPD — Staff</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><h1>SmartOPD — Staff Dashboard</h1></header>
+<main>
+
+  <div id="setup-panel" class="card" style="display:none">
+    <label class="label">Backend server address</label>
+    <input id="api-base-input" placeholder="https://your-backend-url">
+    <button onclick="saveApiBase()">Save</button>
+  </div>
+
+  <div id="login-panel" class="card">
+    <label class="label">Username</label>
+    <input id="username">
+    <label class="label">Password</label>
+    <input id="password" type="password">
+    <button onclick="login()">Log In</button>
+    <p id="login-error" class="error"></p>
+  </div>
+
+  <div id="dash-panel" style="display:none">
+    <div class="card">
+      <label class="label">Department</label>
+      <select id="department-select" onchange="loadQueue()"></select>
+      <div class="grid-actions">
+        <button onclick="callNext()">Call Next</button>
+        <button class="secondary" onclick="loadQueue()">Refresh</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="label">Add Priority / Emergency Patient</p>
+      <label style="display:flex;align-items:center;gap:8px;font-size:15px;">
+        <input type="checkbox" id="add-emergency" style="width:auto;margin:0;"> Emergency
+      </label>
+      <input id="priority-reason" placeholder="Reason (optional)">
+      <button class="danger" onclick="addPriority()">Insert Priority Patient</button>
+    </div>
+
+    <div class="card">
+      <p class="label">Current Queue</p>
+      <table id="queue-table">
+        <thead><tr><th>Token</th><th>Status</th><th>Wait</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+<script src="common.js"></script>
+<script>
+async function init() {
+  if (!localStorage.getItem("smartopd_api_base")) {
+    document.getElementById("setup-panel").style.display = "block";
+  }
+  if (localStorage.getItem("smartopd_token")) {
+    document.getElementById("login-panel").style.display = "none";
+    document.getElementById("dash-panel").style.display = "block";
+    await loadDepartments();
+    loadQueue();
+    setInterval(loadQueue, 15000);
+  }
+}
+function saveApiBase() { setApiBase(document.getElementById("api-base-input").value); location.reload(); }
+
+async function login() {
+  try {
+    const res = await apiFetch("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value,
+      }),
+    });
+    localStorage.setItem("smartopd_token", res.access_token);
+    location.reload();
+  } catch (e) {
+    document.getElementById("login-error").textContent = e.message;
+  }
+}
+
+async function loadDepartments() {
+  const depts = await apiFetch("/patients/departments");
+  document.getElementById("department-select").innerHTML =
+    depts.map(d => `<option value="${d.id}">${d.name}</option>`).join("");
+}
+
+function currentDept() {
+  return parseInt(document.getElementById("department-select").value, 10);
+}
+
+async function loadQueue() {
+  const dept = currentDept();
+  if (!dept) return;
+  const entries = await apiFetch(`/staff/queue/${dept}`);
+  const tbody = document.querySelector("#queue-table tbody");
+  tbody.innerHTML = entries.map(e => `
+    <tr>
+      <td>${e.token_number}${e.priority ? " ⚠️" : ""}</td>
+      <td><span class="status-badge status-${e.status}">${e.status}</span></td>
+      <td>${fmtMinutes(e.estimated_wait_minutes)}</td>
+      <td>
+        ${e.status === "CALLED" ? `<button onclick="startC(${e.id})">Start</button>` : ""}
+        ${e.status === "IN_CONSULTATION" ? `<button onclick="completeC(${e.id})">Complete</button>` : ""}
+        ${e.status === "WAITING" ? `<button class="secondary" onclick="noShow(${e.id})">No-show</button>` : ""}
+      </td>
+    </tr>`).join("") || "<tr><td colspan='4' class='muted'>Queue is empty.</td></tr>";
+}
+
+async function callNext() {
+  const dept = currentDept();
+  const entry = await apiFetch("/staff/queue/call-next", { method: "POST", body: JSON.stringify({ department_id: dept }) });
+  if (!entry) alert("No waiting patients.");
+  loadQueue();
+}
+async function startC(id) { await apiFetch(`/staff/queue/${id}/start`, { method: "POST" }); loadQueue(); }
+async function completeC(id) { await apiFetch(`/staff/queue/${id}/complete`, { method: "POST" }); loadQueue(); }
+async function noShow(id) { await apiFetch(`/staff/queue/${id}/cancel`, { method: "POST", body: JSON.stringify({ no_show: true }) }); loadQueue(); }
+
+async function addPriority() {
+  const dept = currentDept();
+  const emergency = document.getElementById("add-emergency").checked;
+  const reason = document.getElementById("priority-reason").value;
+  try {
+    await apiFetch("/staff/queue/add-priority", {
+      method: "POST",
+      body: JSON.stringify({ department_id: dept, priority: true, emergency, reason }),
+    });
+    loadQueue();
+  } catch (e) { alert(e.message); }
+}
+
+init();
+</script>
+</body>
+</html>
