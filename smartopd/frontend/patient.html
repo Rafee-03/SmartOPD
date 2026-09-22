@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartOPD — Your Token</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>SmartOPD AI</h1>
+  <p>Government Hospital OPD Queue</p>
+</header>
+<main>
+
+  <div id="setup-panel" class="card" style="display:none">
+    <label class="label">Backend server address (ask hospital IT if unsure)</label>
+    <input id="api-base-input" placeholder="https://your-backend-url">
+    <button onclick="saveApiBase()">Save</button>
+  </div>
+
+  <div id="registration-panel" class="card">
+    <p class="label">Select Department</p>
+    <select id="department-select"></select>
+    <label style="display:flex;align-items:center;gap:8px;font-size:15px;">
+      <input type="checkbox" id="emergency-check" style="width:auto;margin:0;"> This is an emergency
+    </label>
+    <button onclick="register()">Get Token</button>
+    <p class="muted">Or already have a token? <a href="#" onclick="showLookup()">Look it up</a></p>
+    <div id="lookup-box" style="display:none;margin-top:10px;">
+      <input id="lookup-token" placeholder="Paste your token link/code">
+      <button class="secondary" onclick="lookup()">View Status</button>
+    </div>
+  </div>
+
+  <div id="status-panel" style="display:none">
+    <div id="update-flag" class="update-flag" style="display:none"></div>
+    <div class="card token-display">
+      <p class="label">Your OPD Token</p>
+      <div class="token" id="token-number">—</div>
+      <span class="status-badge" id="status-badge">—</span>
+    </div>
+    <div class="card">
+      <p class="label">Estimated Wait</p>
+      <p class="value" id="wait-value">—</p>
+      <p class="label">Estimated Consultation Time</p>
+      <p class="value" id="consult-value">—</p>
+      <p class="label">Patients Ahead</p>
+      <p class="value" id="ahead-value">—</p>
+      <p class="label">Last Updated</p>
+      <p class="value" id="updated-value" style="font-size:16px">—</p>
+      <p class="notice" id="prediction-message"></p>
+    </div>
+    <button class="secondary" onclick="location.reload()">Register another patient</button>
+  </div>
+
+  <p class="footer-note">This is a queue management aid, not a medical service.<br>Estimates may change if priority/emergency patients are added.</p>
+</main>
+
+<script src="common.js"></script>
+<script>
+let currentPublicToken = null;
+let pollTimer = null;
+
+async function init() {
+  if (!localStorage.getItem("smartopd_api_base")) {
+    document.getElementById("setup-panel").style.display = "block";
+  }
+  currentPublicToken = localStorage.getItem("smartopd_public_token");
+  try {
+    const depts = await apiFetch("/patients/departments");
+    const sel = document.getElementById("department-select");
+    sel.innerHTML = depts.map(d => `<option value="${d.id}">${d.name}</option>`).join("");
+  } catch (e) {
+    console.warn("Could not load departments:", e.message);
+  }
+  if (currentPublicToken) {
+    showStatusPanel();
+    startPolling();
+  }
+}
+
+function saveApiBase() {
+  setApiBase(document.getElementById("api-base-input").value);
+  location.reload();
+}
+
+function showLookup() {
+  document.getElementById("lookup-box").style.display = "block";
+  return false;
+}
+
+async function register() {
+  const department_id = parseInt(document.getElementById("department-select").value, 10);
+  const emergency = document.getElementById("emergency-check").checked;
+  try {
+    const entry = await apiFetch("/patients/register", {
+      method: "POST",
+      body: JSON.stringify({ department_id, priority: emergency, emergency }),
+    });
+    currentPublicToken = entry.public_token;
+    localStorage.setItem("smartopd_public_token", currentPublicToken);
+    showStatusPanel();
+    startPolling();
+  } catch (e) {
+    alert("Registration failed: " + e.message);
+  }
+}
+
+function lookup() {
+  const val = document.getElementById("lookup-token").value.trim();
+  const parts = val.split("/");
+  currentPublicToken = parts[parts.length - 1];
+  localStorage.setItem("smartopd_public_token", currentPublicToken);
+  showStatusPanel();
+  startPolling();
+}
+
+function showStatusPanel() {
+  document.getElementById("registration-panel").style.display = "none";
+  document.getElementById("status-panel").style.display = "block";
+}
+
+let lastWait = null;
+
+async function refreshStatus() {
+  try {
+    const s = await apiFetch(`/patients/status/${currentPublicToken}`);
+    document.getElementById("token-number").textContent = s.token_number;
+    const badge = document.getElementById("status-badge");
+    badge.textContent = s.status.replace("_", " ");
+    badge.className = "status-badge status-" + s.status;
+    document.getElementById("wait-value").textContent = fmtMinutes(s.estimated_wait_minutes);
+    document.getElementById("consult-value").textContent = fmtTime(s.estimated_consultation_time);
+    document.getElementById("ahead-value").textContent = s.patients_ahead;
+    document.getElementById("updated-value").textContent = new Date(s.last_updated + "Z").toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+    document.getElementById("prediction-message").textContent = s.prediction_message;
+
+    const flag = document.getElementById("update-flag");
+    if (s.previous_estimated_wait_minutes != null && s.estimated_wait_minutes != null &&
+        Math.round(s.previous_estimated_wait_minutes) !== Math.round(s.estimated_wait_minutes)) {
+      flag.style.display = "block";
+      flag.innerHTML = `<strong>Estimate updated.</strong><br>Previous: ${fmtMinutes(s.previous_estimated_wait_minutes)} &rarr; Current: ${fmtMinutes(s.estimated_wait_minutes)}`;
+    } else {
+      flag.style.display = "none";
+    }
+  } catch (e) {
+    console.warn("status refresh failed:", e.message);
+  }
+}
+
+function startPolling() {
+  refreshStatus();
+  pollTimer = setInterval(refreshStatus, 15000); // polling fallback (section 23)
+}
+
+init();
+</script>
+</body>
+</html>
