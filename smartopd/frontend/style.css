@@ -1,0 +1,120 @@
+/* SmartOPD AI — minimal, high-contrast, low-bandwidth, elderly-friendly.
+   No frameworks, no animation-heavy UI, no gradients/glassmorphism. */
+
+:root {
+  --blue: #0b4f8a;
+  --blue-dark: #073a68;
+  --green: #1a7f37;
+  --red: #b42318;
+  --amber: #92590a;
+  --bg: #f5f6f7;
+  --card: #ffffff;
+  --border: #d7dbe0;
+  --text: #1c1f23;
+  --muted: #5b6470;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+header {
+  background: var(--blue-dark);
+  color: #fff;
+  padding: 14px 16px;
+}
+header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+header p { margin: 2px 0 0; font-size: 13px; color: #cfe0f0; }
+
+main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.token-display {
+  text-align: center;
+}
+.token-display .token {
+  font-size: 44px;
+  font-weight: 700;
+  color: var(--blue);
+  letter-spacing: 1px;
+}
+.label { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.value { font-size: 22px; font-weight: 600; margin: 2px 0 10px; }
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.status-WAITING { background: #fff4e0; color: var(--amber); }
+.status-CALLED { background: #e5f0ff; color: var(--blue); }
+.status-IN_CONSULTATION { background: #e6f4ea; color: var(--green); }
+.status-COMPLETED { background: #eee; color: #555; }
+.status-CANCELLED, .status-NO_SHOW { background: #fbe7e5; color: var(--red); }
+
+.notice {
+  font-size: 14px;
+  color: var(--muted);
+  border-left: 3px solid var(--blue);
+  padding-left: 10px;
+  margin-top: 10px;
+}
+
+.update-flag {
+  background: #fff8e1;
+  border: 1px solid #f0d98c;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+button, select, input {
+  font-size: 17px;
+  padding: 10px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  width: 100%;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+button {
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+button.secondary { background: #fff; color: var(--blue); border: 1px solid var(--blue); }
+button.danger { background: var(--red); }
+button:disabled { background: #aab; cursor: not-allowed; }
+
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+
+.grid-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.muted { color: var(--muted); font-size: 14px; }
+.error { color: var(--red); font-size: 14px; }
+.footer-note { font-size: 12px; color: var(--muted); text-align: center; margin-top: 20px; }
