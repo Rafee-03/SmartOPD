@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartOPD — Admin</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><h1>SmartOPD — Admin</h1></header>
+<main>
+
+  <div id="setup-panel" class="card" style="display:none">
+    <label class="label">Backend server address</label>
+    <input id="api-base-input" placeholder="https://your-backend-url">
+    <button onclick="saveApiBase()">Save</button>
+  </div>
+
+  <div id="login-panel" class="card">
+    <label class="label">Username</label>
+    <input id="username">
+    <label class="label">Password</label>
+    <input id="password" type="password">
+    <button onclick="login()">Log In</button>
+    <p id="login-error" class="error"></p>
+  </div>
+
+  <div id="dash-panel" style="display:none">
+
+    <div class="card">
+      <p class="label">1. Upload Historical Dataset (CSV)</p>
+      <input type="file" id="dataset-file" accept=".csv,.xlsx">
+      <button onclick="uploadDataset()">Upload &amp; Validate</button>
+      <button class="secondary" onclick="importLiveHistory()">Use completed live queue records instead</button>
+      <pre id="quality-report" class="muted" style="white-space:pre-wrap;font-size:13px;"></pre>
+    </div>
+
+    <div class="card">
+      <p class="label">2. Train Model</p>
+      <button onclick="trainModel()">Train on Validated Dataset</button>
+      <pre id="train-result" class="muted" style="white-space:pre-wrap;font-size:13px;"></pre>
+    </div>
+
+    <div class="card">
+      <p class="label">3. Model Versions</p>
+      <button class="secondary" onclick="loadModels()">Refresh List</button>
+      <table>
+        <thead><tr><th>Version</th><th>Type</th><th>MAE</th><th>R²</th><th>Active</th></tr></thead>
+        <tbody id="models-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <p class="label">OPD Analytics</p>
+      <pre id="opd-analytics" class="muted" style="white-space:pre-wrap;font-size:13px;"></pre>
+      <p class="label">Prediction Accuracy</p>
+      <pre id="pred-analytics" class="muted" style="white-space:pre-wrap;font-size:13px;"></pre>
+      <button class="secondary" onclick="loadAnalytics()">Refresh Analytics</button>
+    </div>
+
+    <div class="card">
+      <p class="label">Add Department</p>
+      <input id="dept-name" placeholder="Department name">
+      <input id="dept-prefix" placeholder="Token prefix e.g. A" maxlength="3">
+      <button onclick="addDepartment()">Add</button>
+    </div>
+
+  </div>
+</main>
+<script src="common.js"></script>
+<script>
+async function init() {
+  if (!localStorage.getItem("smartopd_api_base")) document.getElementById("setup-panel").style.display = "block";
+  if (localStorage.getItem("smartopd_token")) {
+    document.getElementById("login-panel").style.display = "none";
+    document.getElementById("dash-panel").style.display = "block";
+    loadModels();
+    loadAnalytics();
+  }
+}
+function saveApiBase() { setApiBase(document.getElementById("api-base-input").value); location.reload(); }
+
+async function login() {
+  try {
+    const res = await apiFetch("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username: document.getElementById("username").value, password: document.getElementById("password").value }),
+    });
+    if (res.role !== "ADMIN") throw new Error("This account is not an admin.");
+    localStorage.setItem("smartopd_token", res.access_token);
+    location.reload();
+  } catch (e) { document.getElementById("login-error").textContent = e.message; }
+}
+
+async function uploadDataset() {
+  const file = document.getElementById("dataset-file").files[0];
+  if (!file) return alert("Choose a file first.");
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const report = await apiFetch("/admin/dataset/upload", { method: "POST", body: fd });
+    document.getElementById("quality-report").textContent = JSON.stringify(report, null, 2);
+  } catch (e) { alert(e.message); }
+}
+
+async function importLiveHistory() {
+  try {
+    const r = await apiFetch("/admin/dataset/import-live-history", { method: "POST" });
+    document.getElementById("quality-report").textContent = `Loaded ${r.rows_loaded} completed live queue records into the training cache.`;
+  } catch (e) { alert(e.message); }
+}
+
+async function trainModel() {
+  document.getElementById("train-result").textContent = "Training...";
+  try {
+    const mv = await apiFetch("/admin/train", { method: "POST" });
+    document.getElementById("train-result").textContent = JSON.stringify(mv, null, 2) +
+      "\n\nReview the metrics above, then activate this version below if it's an improvement.";
+    loadModels();
+  } catch (e) {
+    document.getElementById("train-result").textContent = "Training failed: " + e.message;
+  }
+}
+
+async function loadModels() {
+  const models = await apiFetch("/admin/models");
+  document.getElementById("models-tbody").innerHTML = models.map(m => `
+    <tr>
+      <td>${m.version_name}</td>
+      <td>${m.model_type}</td>
+      <td>${m.mae.toFixed(1)}</td>
+      <td>${m.r2 != null ? m.r2.toFixed(2) : "—"}</td>
+      <td>${m.is_active ? "✅" : `<button class="secondary" onclick="activate(${m.id})">Activate</button>`}</td>
+    </tr>`).join("");
+}
+async function activate(id) { await apiFetch(`/admin/models/${id}/activate`, { method: "POST" }); loadModels(); }
+
+async function loadAnalytics() {
+  const opd = await apiFetch("/admin/analytics/opd");
+  document.getElementById("opd-analytics").textContent = JSON.stringify(opd, null, 2);
+  const pred = await apiFetch("/admin/analytics/predictions");
+  document.getElementById("pred-analytics").textContent = JSON.stringify(pred, null, 2);
+}
+
+async function addDepartment() {
+  const name = document.getElementById("dept-name").value;
+  const token_prefix = document.getElementById("dept-prefix").value || "A";
+  try {
+    await apiFetch("/admin/departments", { method: "POST", body: JSON.stringify({ name, token_prefix }) });
+    alert("Department added.");
+  } catch (e) { alert(e.message); }
+}
+
+init();
+</script>
+</body>
+</html>
